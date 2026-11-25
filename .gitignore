@@ -1,0 +1,14 @@
+﻿# Secrets et identifiants
+.env
+*.pem
+*.key
+credentials*
+# Python / Node
+__pycache__/
+.venv/
+node_modules/
+# Fichiers temporaires AWS
+dist*.json
+rr.json
+batch.json
+*.zip
