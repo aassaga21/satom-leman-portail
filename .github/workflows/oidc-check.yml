@@ -1,0 +1,35 @@
+name: G0 - verification OIDC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  oidc-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Afficher le sujet OIDC (sans le jeton)
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          python3 -c "import sys,json,base64;p=sys.argv[1].split('.')[1];p+='='*(-len(p)%4);print('sub =',json.loads(base64.urlsafe_b64decode(p))['sub'])" "$TOKEN"
+
+      - name: Assumer le role de deploiement
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Test positif - identite obtenue
+        run: aws sts get-caller-identity --query Arn --output text
+
+      - name: Test negatif - lecture du bootstrap refusee
+        run: |
+          if aws cloudformation describe-stacks --stack-name stack-leman-bootstrap-AA >/dev/null 2>err.txt; then
+            echo "ECHEC : acces au bootstrap autorise" && exit 1
+          fi
+          grep -q AccessDenied err.txt && echo "OK : acces au bootstrap refuse (AccessDenied)"
