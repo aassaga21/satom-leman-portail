@@ -1,0 +1,9 @@
+{
+  "Env": "dev",
+  "Suffix": "AA",
+  "VpcCidr": "10.1.0.0/16",
+  "PublicSubnetACidr": "10.1.0.0/24",
+  "PublicSubnetBCidr": "10.1.1.0/24",
+  "PrivateSubnetACidr": "10.1.10.0/24",
+  "PrivateSubnetBCidr": "10.1.11.0/24"
+}

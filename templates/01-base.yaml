@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Socle par environnement - portail Groupe Leman Finance (equipe AA).
+  Cle KMS geree par le client pour le chiffrement au repos (logs, volumes, secrets).
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+    AllowedPattern: "^[A-Z]{2}$"
+  Module:
+    Type: String
+    Default: S01-vpc
+
+Resources:
+  KmsKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Sub Cle KMS leman ${Env} ${Suffix}
+      EnableKeyRotation: true
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AdministrationParLeCompte
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: "*"
+          - Sid: ChiffrementDesLogsCloudWatch
+            Effect: Allow
+            Principal:
+              Service: !Sub logs.${AWS::Region}.amazonaws.com
+            Action:
+              - kms:Encrypt*
+              - kms:Decrypt*
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:Describe*
+            Resource: "*"
+            Condition:
+              ArnLike:
+                kms:EncryptionContext:aws:logs:arn: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/leman/${Env}-${Suffix}/*
+      Tags:
+        - { Key: Name, Value: !Sub "kms-leman-${Env}-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  KmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/kms-leman-${Env}-${Suffix}
+      TargetKeyId: !Ref KmsKey
+
+Outputs:
+  KmsKeyArn:
+    Description: ARN de la cle KMS de l'environnement
+    Value: !GetAtt KmsKey.Arn
+    Export:
+      Name: !Sub leman-${Env}-${Suffix}-KmsKeyArn
