@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Bootstrap OIDC GitHub Actions - portail Groupe Leman Finance (equipe AA).
+  Deploye manuellement une seule fois (G0). Reference le fournisseur OIDC
+  existant du compte, sans le recreer.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: aassaga21
+  GitHubRepo:
+    Type: String
+    Default: satom-leman-portail
+  Suffix:
+    Type: String
+    Default: AA
+    AllowedPattern: "^[A-Z]{2}$"
+  AppRolePath:
+    Type: String
+    Default: /leman-aa/
+    Description: Chemin IAM impose aux roles crees par les stacks applicatives
+    AllowedPattern: "^/[a-z0-9-]+/$"
+
+Resources:
+  # Role utilise par CloudFormation pour creer les ressources
+  CfnExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub role-cfn-exec-leman-${Suffix}
+      Description: Role d'execution CloudFormation - stacks leman AA
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      ManagedPolicyArns:
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: iam-limite-au-chemin-applicatif
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: GererRolesApplicatifs
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:PassRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role${AppRolePath}*
+              - Sid: AttacherPolitiquesAutorisees
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role${AppRolePath}*
+                Condition:
+                  ArnEquals:
+                    iam:PolicyARN:
+                      - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+                      - !Sub arn:${AWS::Partition}:iam::aws:policy/CloudWatchAgentServerPolicy
+              - Sid: GererInstanceProfiles
+                Effect: Allow
+                Action:
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:TagInstanceProfile
+                  - iam:UntagInstanceProfile
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile${AppRolePath}*
+              - Sid: RolesLiesAuxServices
+                Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/*
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: shared }
+        - { Key: Module, Value: G0-bootstrap }
+
+  # Role assume par GitHub Actions via OIDC
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub role-github-deploy-leman-${Suffix}
+      Description: Role de deploiement GitHub Actions (OIDC) - environnements dev et prod
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubOwner}/${GitHubRepo}:environment:dev
+                  - !Sub repo:${GitHubOwner}/${GitHubRepo}:environment:prod
+      Policies:
+        - PolicyName: deploiement-stacks-leman
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: PiloterStacksLeman
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ListChangeSets
+                  - cloudformation:TagResource
+                  - cloudformation:UntagResource
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/stack-leman-*-${Suffix}/*
+              - Sid: ProtegerLeBootstrap
+                Effect: Deny
+                Action: cloudformation:*
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/stack-leman-bootstrap-${Suffix}/*
+              - Sid: LectureGlobale
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:GetTemplateSummary
+                  - cloudformation:ListStacks
+                Resource: "*"
+              - Sid: PasserRoleExecution
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt CfnExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: shared }
+        - { Key: Module, Value: G0-bootstrap }
+
+Outputs:
+  GitHubDeployRoleArn:
+    Description: A mettre dans la variable GitHub AWS_DEPLOY_ROLE_ARN
+    Value: !GetAtt GitHubDeployRole.Arn
+  CfnExecutionRoleArn:
+    Description: A mettre dans la variable GitHub CFN_EXEC_ROLE_ARN
+    Value: !GetAtt CfnExecutionRole.Arn
