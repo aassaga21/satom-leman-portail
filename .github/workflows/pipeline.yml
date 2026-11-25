@@ -52,9 +52,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Installer cfn-guard
+      - name: Installer cfn-guard (avec reessais et verification)
+        shell: bash
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/aws-cloudformation/cloudformation-guard/main/install-guard.sh | sh
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -sSfL --retry 5 --retry-delay 3 --retry-all-errors \
+            -o /tmp/install-guard.sh \
+            https://raw.githubusercontent.com/aws-cloudformation/cloudformation-guard/main/install-guard.sh
+          for i in 1 2 3; do
+            if sh /tmp/install-guard.sh >/dev/null && [ -x "$HOME/.guard/bin/cfn-guard" ]; then break; fi
+            echo "Tentative $i echouee, nouvel essai dans 5 s"; sleep 5
+          done
+          "$HOME/.guard/bin/cfn-guard" --version
           echo "$HOME/.guard/bin" >> "$GITHUB_PATH"
 
       - name: cfn-guard - templates du projet (doivent passer)
@@ -73,10 +82,15 @@ jobs:
       - name: checkov sur les templates
         run: checkov -d templates --framework cloudformation --compact --quiet
 
-      - name: gitleaks sur tout l'historique
+      - name: gitleaks sur tout l'historique (avec reessais et verification)
+        shell: bash
         run: |
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar xz gitleaks
-          ./gitleaks detect --source . --redact --verbose --exit-code 1
+          set -euo pipefail
+          curl -sSfL --retry 5 --retry-delay 3 --retry-all-errors -o /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz
+          tar xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks version
+          /tmp/gitleaks detect --source . --redact --verbose --exit-code 1
 
   # ---------------- 4. Deploiement dev ----------------
   deploy-dev:

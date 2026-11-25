@@ -159,14 +159,62 @@ Resources:
               - Sid: LectureTestsPreuves
                 Effect: Allow
                 Action:
-                  - ec2:DescribeVpcs
-                  - ec2:DescribeSubnets
-                  - ec2:DescribeRouteTables
-                  - ec2:DescribeFlowLogs
+                  - ec2:Describe*
                   - logs:DescribeLogGroups
                   - kms:DescribeKey
                   - kms:GetKeyRotationStatus
+                  - ssm:DescribeInstanceInformation
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
                 Resource: "*"
+              - Sid: ReachabilityAnalyzerCreationTaguee
+                Effect: Allow
+                Action:
+                  - ec2:CreateNetworkInsightsPath
+                  - ec2:StartNetworkInsightsAnalysis
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/Equipe: Assaga
+              - Sid: ReachabilityAnalyzerRequetes
+                Effect: Allow
+                Action:
+                  - tiros:CreateQuery
+                  - tiros:GetQueryAnswer
+                  - tiros:GetQueryExplanation
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: !Ref AWS::Region
+              - Sid: TaguerALaCreationReachability
+                Effect: Allow
+                Action: ec2:CreateTags
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction:
+                      - CreateNetworkInsightsPath
+                      - StartNetworkInsightsAnalysis
+              - Sid: NettoyageReachability
+                Effect: Allow
+                Action:
+                  - ec2:DeleteNetworkInsightsPath
+                  - ec2:DeleteNetworkInsightsAnalysis
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/Equipe: Assaga
+              - Sid: SsmCommandesTestsDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - Sid: SsmCommandesTestsInstances
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    ssm:resourceTag/Equipe: Assaga
               - Sid: PasserRoleExecution
                 Effect: Allow
                 Action: iam:PassRole
