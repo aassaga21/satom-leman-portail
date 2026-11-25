@@ -1,0 +1,57 @@
+# Regles cfn-guard - portail Groupe Leman Finance (equipe AA)
+
+# 1. Aucun sous-reseau n'attribue d'IP publique automatiquement
+let subnets = Resources.*[ Type == "AWS::EC2::Subnet" ]
+rule subnet_sans_ip_publique_auto when %subnets !empty {
+    %subnets.Properties {
+        MapPublicIpOnLaunch !exists OR
+        MapPublicIpOnLaunch == false
+    }
+}
+
+# 2. Aucun port d'administration ouvert a Internet
+let ingress_inline = Resources.*[ Type == "AWS::EC2::SecurityGroup" ].Properties.SecurityGroupIngress[ CidrIp == "0.0.0.0/0" OR CidrIpv6 == "::/0" ]
+let ingress_seuls  = Resources.*[ Type == "AWS::EC2::SecurityGroupIngress" ].Properties[ CidrIp == "0.0.0.0/0" OR CidrIpv6 == "::/0" ]
+
+rule sg_admin_ferme_internet {
+    when %ingress_inline !empty {
+        %ingress_inline {
+            IpProtocol != "-1"
+            FromPort > 22   OR ToPort < 22
+            FromPort > 3389 OR ToPort < 3389
+        }
+    }
+    when %ingress_seuls !empty {
+        %ingress_seuls {
+            IpProtocol != "-1"
+            FromPort > 22   OR ToPort < 22
+            FromPort > 3389 OR ToPort < 3389
+        }
+    }
+}
+
+# 3. Tags obligatoires sur toute ressource taguable
+let tagged = Resources.*[ Properties.Tags exists ]
+rule tags_obligatoires when %tagged !empty {
+    %tagged {
+        some Properties.Tags[*].Key == "Projet"
+        some Properties.Tags[*].Key == "Equipe"
+        some Properties.Tags[*].Key == "Environnement"
+        some Properties.Tags[*].Key == "Module"
+    }
+}
+
+# 4. Logs chiffres et retention definie
+let log_groups = Resources.*[ Type == "AWS::Logs::LogGroup" ]
+rule logs_chiffres_et_retenus when %log_groups !empty {
+    %log_groups.Properties {
+        KmsKeyId exists
+        RetentionInDays exists
+    }
+}
+
+# 5. Rotation des cles KMS
+let kms_keys = Resources.*[ Type == "AWS::KMS::Key" ]
+rule kms_rotation_active when %kms_keys !empty {
+    %kms_keys.Properties.EnableKeyRotation == true
+}

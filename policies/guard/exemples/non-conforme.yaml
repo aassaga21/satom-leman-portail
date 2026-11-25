@@ -1,0 +1,28 @@
+# Template VOLONTAIREMENT non conforme - sert a prouver que cfn-guard bloque.
+# Ne jamais deployer.
+AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  MauvaisSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: vpc-00000000
+      CidrBlock: 10.9.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: sans-tags-obligatoires }
+  MauvaisSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SSH ouvert a Internet
+      VpcId: vpc-00000000
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 22, ToPort: 22, CidrIp: 0.0.0.0/0 }
+  MauvaisLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /test/non-chiffre
+  MauvaiseCle:
+    Type: AWS::KMS::Key
+    Properties:
+      EnableKeyRotation: false
+      KeyPolicy: { Version: "2012-10-17", Statement: [] }

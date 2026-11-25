@@ -1,0 +1,266 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Reseau par environnement - portail Groupe Leman Finance (equipe AA).
+  Sprint 1 : VPC, sous-reseaux publics et prives sur deux zones, tables de
+  routage (sans route sortante), VPC Flow Logs chiffres.
+
+Parameters:
+  Env:
+    Type: String
+    AllowedValues: [dev, prod]
+  Suffix:
+    Type: String
+    Default: AA
+    AllowedPattern: "^[A-Z]{2}$"
+  Module:
+    Type: String
+    Default: S01-vpc
+  VpcCidr:
+    Type: String
+    AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
+  PublicSubnetACidr:
+    Type: String
+  PublicSubnetBCidr:
+    Type: String
+  PrivateSubnetACidr:
+    Type: String
+  PrivateSubnetBCidr:
+    Type: String
+  FlowLogRetentionDays:
+    Type: Number
+    Default: 365
+    AllowedValues: [365, 400, 545, 731]
+
+Resources:
+  # ---------- VPC ----------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Metadata:
+      checkov:
+        skip:
+          - id: CKV2_AWS_12
+            comment: "Le SG par defaut ne peut pas etre restreint en CloudFormation natif ; il n'est attache a aucune ressource (voir ADR-004)."
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub "vpc-${Env}-leman-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  # ---------- Sous-reseaux ----------
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-${Env}-public-a-${Suffix}" }
+        - { Key: Tier, Value: public }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PublicSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-${Env}-public-b-${Suffix}" }
+        - { Key: Tier, Value: public }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetACidr
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-${Env}-private-a-${Suffix}" }
+        - { Key: Tier, Value: private }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: !Ref PrivateSubnetBCidr
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - { Key: Name, Value: !Sub "sub-${Env}-private-b-${Suffix}" }
+        - { Key: Tier, Value: private }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  # ---------- Tables de routage (routes ajoutees au sprint 2) ----------
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "rt-${Env}-public-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "rt-${Env}-private-a-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - { Key: Name, Value: !Sub "rt-${Env}-private-b-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  PublicSubnetARouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateSubnetARouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTableA
+
+  PrivateSubnetBRouteTableAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTableB
+
+  # ---------- VPC Flow Logs chiffres ----------
+  FlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /leman/${Env}-${Suffix}/vpc-flow-logs
+      RetentionInDays: !Ref FlowLogRetentionDays
+      KmsKeyId:
+        Fn::ImportValue: !Sub leman-${Env}-${Suffix}-KmsKeyArn
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /leman-aa/
+      Description: !Sub Publication des VPC Flow Logs ${Env} ${Suffix}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: vpc-flow-logs.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: publier-flow-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource: !GetAtt FlowLogGroup.Arn
+              - Effect: Allow
+                Action: logs:DescribeLogGroups
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+      Tags:
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+  VpcFlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceType: VPC
+      ResourceId: !Ref Vpc
+      TrafficType: ALL
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+      MaxAggregationInterval: 60
+      Tags:
+        - { Key: Name, Value: !Sub "fl-${Env}-leman-${Suffix}" }
+        - { Key: Projet, Value: SatomCloudNetwork }
+        - { Key: Equipe, Value: Assaga }
+        - { Key: Environnement, Value: !Ref Env }
+        - { Key: Module, Value: !Ref Module }
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-VpcId" }
+  VpcCidr:
+    Value: !GetAtt Vpc.CidrBlock
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-VpcCidr" }
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PublicSubnetAId" }
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PublicSubnetBId" }
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PrivateSubnetAId" }
+  PrivateSubnetBId:
+    Value: !Ref PrivateSubnetB
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PrivateSubnetBId" }
+  PublicRouteTableId:
+    Value: !Ref PublicRouteTable
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PublicRouteTableId" }
+  PrivateRouteTableAId:
+    Value: !Ref PrivateRouteTableA
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PrivateRouteTableAId" }
+  PrivateRouteTableBId:
+    Value: !Ref PrivateRouteTableB
+    Export: { Name: !Sub "leman-${Env}-${Suffix}-PrivateRouteTableBId" }
