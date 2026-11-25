@@ -1,0 +1,120 @@
+name: Pipeline DevSecOps
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+
+jobs:
+  # ---------------- 1. Qualite de code ----------------
+  qualite:
+    name: 1 - Qualite (cfn-lint, shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer cfn-lint
+        run: pip install --quiet cfn-lint
+
+      - name: cfn-lint sur les templates
+        run: cfn-lint templates/*.yaml
+
+      - name: shellcheck sur les scripts
+        run: shellcheck scripts/*.sh
+
+  # ---------------- 2. Securite statique ----------------
+  securite:
+    name: 2 - Securite (cfn-guard, checkov, gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Installer cfn-guard
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/aws-cloudformation/cloudformation-guard/main/install-guard.sh | sh
+          echo "$HOME/.guard/bin" >> "$GITHUB_PATH"
+
+      - name: cfn-guard - templates du projet (doivent passer)
+        run: cfn-guard validate -r policies/guard/leman.guard -d templates/ --show-summary fail
+
+      - name: cfn-guard - template non conforme (doit echouer)
+        run: |
+          if cfn-guard validate -r policies/guard/leman.guard -d policies/guard/exemples/non-conforme.yaml --show-summary none; then
+            echo "ERREUR : les regles cfn-guard n'ont pas detecte le template non conforme"; exit 1
+          fi
+          echo "OK : le template non conforme est bien bloque"
+
+      - name: Installer checkov
+        run: pip install --quiet checkov
+
+      - name: checkov sur les templates
+        run: checkov -d templates --framework cloudformation --compact --quiet
+
+      - name: gitleaks sur tout l'historique
+        run: |
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar xz gitleaks
+          ./gitleaks detect --source . --redact --verbose --exit-code 1
+
+  # ---------------- 4. Deploiement dev ----------------
+  deploy-dev:
+    name: 4 - Deploiement dev
+    needs: [qualite, securite]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assumer le role de deploiement (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deployer dev par change set
+        env:
+          CFN_EXEC_ROLE_ARN: ${{ vars.CFN_EXEC_ROLE_ARN }}
+        run: ./scripts/deploy.sh dev
+
+  # ---------------- 6. Deploiement prod (approbation manuelle) ----------------
+  deploy-prod:
+    name: 6 - Deploiement prod
+    needs: [deploy-dev]
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assumer le role de deploiement (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deployer prod par change set
+        env:
+          CFN_EXEC_ROLE_ARN: ${{ vars.CFN_EXEC_ROLE_ARN }}
+        run: ./scripts/deploy.sh prod
