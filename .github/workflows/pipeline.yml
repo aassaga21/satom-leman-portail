@@ -36,8 +36,8 @@ jobs:
       - name: cfn-lint sur les templates
         run: cfn-lint templates/*.yaml
 
-      - name: shellcheck sur les scripts
-        run: shellcheck scripts/*.sh
+      - name: shellcheck sur les scripts et les tests
+        run: shellcheck scripts/*.sh tests/*.sh
 
   # ---------------- 2. Securite statique ----------------
   securite:
@@ -99,10 +99,42 @@ jobs:
           CFN_EXEC_ROLE_ARN: ${{ vars.CFN_EXEC_ROLE_ARN }}
         run: ./scripts/deploy.sh dev
 
-  # ---------------- 6. Deploiement prod (approbation manuelle) ----------------
+  # ---------------- 5. Tests dev ----------------
+  tests-dev:
+    name: 5 - Tests dev
+    needs: [deploy-dev]
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assumer le role de deploiement (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sprint 1 - VPC et sous-reseaux
+        shell: bash
+        run: ./tests/s01-subnets.sh dev | tee preuve-s01-dev.txt
+
+      - name: Publier la preuve dans le resume
+        if: always()
+        shell: bash
+        run: |
+          { echo "### Preuve sprint 1 - dev"; echo '```'; cat preuve-s01-dev.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archiver la preuve
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preuve-s01-dev
+          path: preuve-s01-dev.txt
+
+  # ---------------- 6. Deploiement et tests prod (approbation manuelle) ----------------
   deploy-prod:
     name: 6 - Deploiement prod
-    needs: [deploy-dev]
+    needs: [tests-dev]
     runs-on: ubuntu-latest
     environment: prod
     steps:
@@ -118,3 +150,20 @@ jobs:
         env:
           CFN_EXEC_ROLE_ARN: ${{ vars.CFN_EXEC_ROLE_ARN }}
         run: ./scripts/deploy.sh prod
+
+      - name: Sprint 1 - VPC et sous-reseaux
+        shell: bash
+        run: ./tests/s01-subnets.sh prod | tee preuve-s01-prod.txt
+
+      - name: Publier la preuve dans le resume
+        if: always()
+        shell: bash
+        run: |
+          { echo "### Preuve sprint 1 - prod"; echo '```'; cat preuve-s01-prod.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Archiver la preuve
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preuve-s01-prod
+          path: preuve-s01-prod.txt
