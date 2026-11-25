@@ -11,6 +11,14 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: satom-leman-portail
+  GitHubOwnerId:
+    Type: String
+    Default: "253502152"
+    Description: Identifiant numerique du proprietaire (sujet OIDC immutable)
+  GitHubRepoId:
+    Type: String
+    Default: "1471841535"
+    Description: Identifiant numerique du depot (sujet OIDC immutable)
   Suffix:
     Type: String
     Default: AA
@@ -111,10 +119,9 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-              StringLike:
                 token.actions.githubusercontent.com:sub:
-                  - !Sub repo:${GitHubOwner}/${GitHubRepo}:environment:dev
-                  - !Sub repo:${GitHubOwner}/${GitHubRepo}:environment:prod
+                  - !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@${GitHubRepoId}:environment:dev
+                  - !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepo}@${GitHubRepoId}:environment:prod
       Policies:
         - PolicyName: deploiement-stacks-leman
           PolicyDocument:
