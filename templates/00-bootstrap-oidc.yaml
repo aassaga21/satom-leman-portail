@@ -156,6 +156,17 @@ Resources:
                   - cloudformation:GetTemplateSummary
                   - cloudformation:ListStacks
                 Resource: "*"
+              - Sid: LectureTestsPreuves
+                Effect: Allow
+                Action:
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeRouteTables
+                  - ec2:DescribeFlowLogs
+                  - logs:DescribeLogGroups
+                  - kms:DescribeKey
+                  - kms:GetKeyRotationStatus
+                Resource: "*"
               - Sid: PasserRoleExecution
                 Effect: Allow
                 Action: iam:PassRole
